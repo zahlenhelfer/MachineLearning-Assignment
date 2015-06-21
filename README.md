@@ -1,2 +1,7 @@
 Coursera Practical MachineLearning Assignment "WriteUp"
-the writeUp.Rmd and WriteUp.html are in this repo
+The required files incl. generated html is in this repo
+- writeUp.Rmd
+- WriteUp.html
+
+if you like to read the writeUp.html easy in your browser you can click here
+https://zahlenhelfer.github.io/MachineLearning-Assignment
