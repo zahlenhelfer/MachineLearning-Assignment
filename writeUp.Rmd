@@ -1,0 +1,190 @@
+---
+output: html_document
+author: "Marcus Ross"
+title: "Machine Learning-WriteUp"
+date: "2015/06/20"
+---
+  
+# Practical Machine Learning
+  
+## Abstract
+With this assignment a machine for learning algorithm to predict activity quality is build. I uses data from activity monitors.
+The used data for this assignment can be found online here [1].
+
+## The Data Retrieval
+The dataset from [2] and [3] can be downloaded with these handy calls. It first checks if the file exists locally, if not it get´s downloaded:
+  
+```{r cache=T}
+if (! file.exists('./training-data.csv')) {
+  download.file('http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',   destfile = './training-data.csv')
+}
+if (! file.exists('./testing-data.csv')) {
+  download.file('http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv',   destfile = './testing-data.csv')
+}
+```
+
+The data is formated in CSV. Which can be easly loaded into R using read.csv:
+```{r cache=T}
+mldata.training <- read.csv('./training-data.csv')
+mldata.testing  <- read.csv('./testing-data.csv')
+```
+
+## The Exploratory Analysis
+The training set has 19.622 records. Each one has 160 variables.
+```{r}
+dim(mldata.training)
+```
+
+While inspecting the data, there is a lot of the 159 predictors missing in most of the records:
+```{r}
+sum(complete.cases(mldata.training))
+head(mldata.training)
+```
+
+Which means, there is a decision if all observations (including incomplete data)
+or less records with completeness are used. In this scenario all records are used.
+A second decision was, to not use the following variables: X, user_name, cvtd_timestamp, new_window, num_window, raw_timestamp_part1, raw_timestamp_part2 because there are not useful as potential confounders.
+
+```{r}
+included.cols <- c('roll_belt', 'pitch_belt', 'yaw_belt', 'total_accel_belt',
+                   'gyros_belt_x', 'gyros_belt_y', 'gyros_belt_z',
+                   'accel_belt_x', 'accel_belt_y', 'accel_belt_z',
+                   'magnet_belt_x', 'magnet_belt_y', 'magnet_belt_z',
+                   'roll_arm', 'pitch_arm', 'yaw_arm', 'total_accel_arm',
+                   'gyros_arm_x', 'gyros_arm_y', 'gyros_arm_z',
+                   'accel_arm_x', 'accel_arm_y', 'accel_arm_z',
+                   'magnet_arm_x', 'magnet_arm_y', 'magnet_arm_z',
+                   'roll_dumbbell', 'pitch_dumbbell', 'yaw_dumbbell', 'total_accel_dumbbell',
+                   'gyros_dumbbell_x', 'gyros_dumbbell_y', 'gyros_dumbbell_z',
+                   'accel_dumbbell_x', 'accel_dumbbell_y', 'accel_dumbbell_z',
+                   'magnet_dumbbell_x', 'magnet_dumbbell_y', 'magnet_dumbbell_z',
+                   'roll_forearm', 'pitch_forearm', 'yaw_forearm', 'total_accel_forearm',
+                   'gyros_forearm_x', 'gyros_forearm_y', 'gyros_forearm_z',
+                   'accel_forearm_x', 'accel_forearm_y', 'accel_forearm_z',
+                   'magnet_forearm_x', 'magnet_forearm_y', 'magnet_forearm_z'
+)
+proc.mldata.testing <- mldata.testing[, included.cols]
+included.cols <- c(included.cols, 'classe')
+proc.mldata.training <- mldata.training[, included.cols]
+```
+
+The transformation will provide a data set of 19622 records each with 53 variables.
+One of those variables is the dependent variable "classe"
+
+```{r}
+dim(proc.mldata.training)
+sum(complete.cases(proc.mldata.training))
+```
+
+Now there is a  clean data set. How are the relations in the data now?
+
+```{r cache=T}
+pred.corr <- cor(proc.mldata.training[, names(proc.mldata.training) != 'classe'])
+pal <- colorRampPalette(c('blue', 'white', 'green'))(n = 199)
+heatmap(pred.corr, col = pal)
+```
+
+With using a heat map as a tool to find correlation. Nevertheless most of predictors
+do not exhibit high degree of correlation, but there are a few pairs of highly correlated variables!
+  
+There is an extreme cutoff of 0.98 (absolute value). Even then there are still two pairs of variables that lay above this threshold.
+
+```{r}
+which(pred.corr > 0.98 & pred.corr != 1)
+pred.corr[which(pred.corr > 0.98 & pred.corr != 1)]
+which(pred.corr < -0.98)
+pred.corr[which(pred.corr < -0.98)]
+```
+
+The roll_belt predictor participates in both of these pairwise interactions:
+```{r}
+pred.corr['roll_belt', 'total_accel_belt']
+pred.corr['roll_belt', 'accel_belt_z']
+pred.corr['total_accel_belt', 'accel_belt_z']
+```
+
+prevent bias: for bias prevention the model will discard the roll_belt variable.
+
+```{r}
+included.cols <- c('pitch_belt', 'yaw_belt', 'total_accel_belt',
+                   'gyros_belt_x', 'gyros_belt_y', 'gyros_belt_z',
+                   'accel_belt_x', 'accel_belt_y', 'accel_belt_z',
+                   'magnet_belt_x', 'magnet_belt_y', 'magnet_belt_z',
+                   'roll_arm', 'pitch_arm', 'yaw_arm', 'total_accel_arm',
+                   'gyros_arm_x', 'gyros_arm_y', 'gyros_arm_z',
+                   'accel_arm_x', 'accel_arm_y', 'accel_arm_z',
+                   'magnet_arm_x', 'magnet_arm_y', 'magnet_arm_z',
+                   'roll_dumbbell', 'pitch_dumbbell', 'yaw_dumbbell', 'total_accel_dumbbell',
+                   'gyros_dumbbell_x', 'gyros_dumbbell_y', 'gyros_dumbbell_z',
+                   'accel_dumbbell_x', 'accel_dumbbell_y', 'accel_dumbbell_z',
+                   'magnet_dumbbell_x', 'magnet_dumbbell_y', 'magnet_dumbbell_z',
+                   'roll_forearm', 'pitch_forearm', 'yaw_forearm', 'total_accel_forearm',
+                   'gyros_forearm_x', 'gyros_forearm_y', 'gyros_forearm_z',
+                   'accel_forearm_x', 'accel_forearm_y', 'accel_forearm_z',
+                   'magnet_forearm_x', 'magnet_forearm_y', 'magnet_forearm_z'
+)
+proc.mldata.testing <- mldata.testing[, included.cols]
+included.cols <- c(included.cols, 'classe')
+proc.mldata.training <- mldata.training[, included.cols]
+```
+
+## Predictive Model
+
+The forest algorithm 4 is been chosen for the building of a predictive model. It is, because it works good with non-linear models. It´s not needed to select parameter for this algorithm and run robust to correlated covariates and outliers. Futher more, the hign number of dimensions and observations makes random forest a good choice. For more details look at 4.
+
+```{r}
+library(randomForest)
+library(caret)
+library(grDevices)
+```
+
+The random forest classifier isn't deterministic. For the matter of reproduction it is set to a random value (birth date of my child here). 
+
+```{r}
+set.seed(310513)
+```
+
+The next step is to train the classifier. This is done by using all of the independent variables and 2048 trees.
+```{r cache=T}
+myModel <- randomForest(classe ~ ., data = proc.mldata.training, ntree = 2048)
+```
+
+```{r}
+myModel
+```
+
+An out-of-bag error estimate of err-rate (0.28 percent) looks good.
+more information about the out-of-bag error vs. generalization error can be found at 4
+
+```{r}
+myModel$confusion
+```
+
+The confusion matrix indicates that the model fits the training. Let's have a look at the variable importance estimates obtained by the classifier training algorithm.
+
+```{r}
+importance <- varImp(myModel)
+importance$Variable <- row.names(importance)
+importance[order(importance$Overall, decreasing = T),]
+```
+
+One of the most important variables is yaw_belt. Compare it to the bottom of the list, you'll see that only the bottom four are have 10 percent or less than yaw_belt. This shows that the algorithm is doing good use on provided predictors.
+
+Qualitycheck:
+The models use prediction against the testing data set provided by coursera [2]
+```{r}
+predict(myModel, proc.mldata.testing)
+```
+
+## Conclusion
+With a perfect accorancy on testing data set a good solution is found.
+
+## References
+1. http://groupware.les.inf.puc-rio.br/har (section off the Weight Lifting Exercise Dataset).
+
+2. https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+3. https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+4. Breiman, L. (2001). Random forests. Machine learning
+http://oz.berkeley.edu/~breiman/randomforest2001.pdf
